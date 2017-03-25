@@ -127,16 +127,12 @@ const server = http.createServer(function (req, res) {
 
 let port;
 
-if (process.env.remote_port) {
-    port = parseInt(process.env.remote_port);
+if (process.env.PORT) {
+    port = parseInt(process.env.PORT);
 } else {
     port = parseInt(CONF.remote_port);
 }
 
-let bind_address = 'localhost';
-if (process.env.bind_address) {
-    bind_address = process.env.bind_address
-}
-server.listen(port, bind_address, function () {
+server.listen(port, '0.0.0.0', function () {
     console.log(`listening on ${CONF.remote_port}`);
 });
