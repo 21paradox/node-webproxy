@@ -125,6 +125,14 @@ const server = http.createServer(function (req, res) {
 });
 
 
-server.listen(CONF.remote_port, function() {
+let port;
+
+if (process.env.remote_port) {
+    port = parseInt(process.env.remote_port);
+} else {
+    port = parseInt(CONF.remote_port);
+}
+
+server.listen(port, function() {
     console.log(`listening on ${CONF.remote_port}`);
 });
