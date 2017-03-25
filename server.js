@@ -133,6 +133,10 @@ if (process.env.remote_port) {
     port = parseInt(CONF.remote_port);
 }
 
-server.listen(port, function() {
+let bind_address = 'localhost';
+if (process.env.bind_address) {
+    bind_address = process.env.bind_address
+}
+server.listen(port, bind_address, function () {
     console.log(`listening on ${CONF.remote_port}`);
 });
