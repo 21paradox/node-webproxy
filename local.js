@@ -42,7 +42,7 @@ server.on('request', function (req, res) {
 
         const proxyReq = http.request({
             hostname: CONF.hostname,
-            port: 8002,
+            port: CONF.remote_port,
             path: '/proxyhttp',
             headers: {
                 reqcfg: reqCfgBase64
