@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const url = require('url');
 const crypto = require('crypto');
 const zlib = require('zlib');
@@ -6,10 +7,6 @@ const serializeError = require('serialize-error');
 
 const server = http.createServer();
 
-const keepAliveAgent = new http.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 50 * 1000,
-});
 
 const lib = require('./lib');
 
@@ -18,6 +15,19 @@ const fieldContentRegExp = /^[\u0009\u0020-\u007e\u0080-\u00ff]+$/;
 const fieldContentRegExpReplace = /[^\u0009\u0020-\u007e\u0080-\u00ff]/g;
 
 const CONF = require('./config.json');
+
+let sender;
+if (CONF.remote_port === 443) {
+    sender = https;
+} else {
+    sender = http;
+}
+
+const keepAliveAgent = new sender.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 50 * 1000,
+});
+
 
 server.on('request', function (req, res) {
 
@@ -40,7 +50,7 @@ server.on('request', function (req, res) {
 
     lib.compressReqCfg(reqConfig, function (err, reqCfgBase64) {
 
-        const proxyReq = http.request({
+        const proxyReq = sender.request({
             hostname: CONF.hostname,
             port: CONF.remote_port,
             path: '/proxyhttp',
@@ -85,7 +95,7 @@ server.on('connect', function (req, socket, head) {
     const opts = { host: host, port: port };
     const uid = uuid.v1();
 
-    const connectReq = http.request({
+    const connectReq = sender.request({
         hostname: CONF.hostname,
         port: CONF.remote_port,
         path: '/httpsconnect',
@@ -158,7 +168,7 @@ function _synReply({ socket, code, reason, headers }) {
 
 function doHttpUp(cfg) {
     const { uid, buf } = cfg;
-    const dataReq = http.request({
+    const dataReq = sender.request({
         hostname: CONF.hostname,
         port: CONF.remote_port,
         path: '/httpsup',
@@ -179,6 +189,6 @@ function doHttpUp(cfg) {
 }
 
 
-server.listen(CONF.local_port, function() {
+server.listen(CONF.local_port, function () {
     console.log(`listening on ${CONF.local_port}`);
 });
