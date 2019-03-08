@@ -141,6 +141,10 @@ server.on('connect', function (req, socket, head) {
             socket.destroy();
         });
 
+        socket.on('error', (e) => {
+            console.log(e)
+        })
+
         socket.resume();
     });
 
