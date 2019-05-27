@@ -41,7 +41,7 @@ server.on('request', function (req, res) {
     }
 
     const reqConfig = {
-        host: parsed.host,
+        hostname: parsed.hostname,
         port: parsed.port || 80,
         path: parsed.path,
         method: req.method,
