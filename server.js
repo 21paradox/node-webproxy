@@ -35,7 +35,24 @@ const server = http.createServer(function (req, res) {
 
             proxyReq.on('response', function (remoteRes) {
                 res.writeHead(remoteRes.statusCode, remoteRes.headers);
-                remoteRes.pipe(res);
+                const dstream = remoteRes.pipe(lib.debounceStream());
+                dstream.on('data', (buf) => {
+                    dstream.pause();
+                    const md5 = lib.getMd5(buf);
+                    const key = lib.addPrefix(md5);
+
+                    lib.ossClient.put(key, buf).then(() => {
+                        res.write(key);
+                        res.write('\n');
+                        dstream.resume();
+                        setTimeout(() => {
+                            lib.ossClient.delete(key);
+                        }, 15 * 1000);
+                    });
+                });
+                dstream.on('end', () => {
+                    res.end(); 
+                })
             });
 
             req.pipe(proxyReq);
@@ -47,6 +64,7 @@ const server = http.createServer(function (req, res) {
                 } else {
                     res.writeHead(500);
                 }
+                console.log(err);
                 res.end(errstr);
             });
         });

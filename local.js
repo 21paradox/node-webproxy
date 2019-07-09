@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const serializeError = require('serialize-error');
 
+const split = require('split');
 const server = http.createServer();
 
 
@@ -27,7 +28,6 @@ const keepAliveAgent = new sender.Agent({
     keepAlive: true,
     keepAliveMsecs: 50 * 1000,
 });
-
 
 server.on('request', function (req, res) {
 
@@ -61,9 +61,30 @@ server.on('request', function (req, res) {
             agent: keepAliveAgent
         });
 
-        proxyReq.on('response', function (remmoteRes) {
-            res.writeHead(remmoteRes.statusCode, remmoteRes.headers);
-            remmoteRes.pipe(res);
+        proxyReq.on('response', function (remoteRes) {
+            res.writeHead(remoteRes.statusCode, remoteRes.headers);
+            const splitStream = remoteRes.pipe(split());
+
+            splitStream.on('data', (line) => {
+                splitStream.pause();
+                if (!line) {
+                    return;
+                }
+                lib.ossClient.get(line).then((result) => {
+                    if(!res.isEnd) {
+
+                    res.write(result.content);
+                    splitStream.resume();
+                    }
+                })
+                .catch((e) => {
+                    console.log(e, line);
+                })
+            });
+            remoteRes.on('end', () => {
+                res.end();
+            })
+            // remoteRes.pipe(res);
         });
 
         req.pipe(proxyReq);
@@ -75,7 +96,11 @@ server.on('request', function (req, res) {
             } else {
                 res.writeHead(500);
             }
-            res.end(errstr);
+            if (err.bytesParsed > 400) {
+                res.end(errstr);
+                res.isEnd = true;
+            }
+            console.log(errstr)
         });
 
     });

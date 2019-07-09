@@ -1,5 +1,7 @@
 {
   "hostname": "localhost",
-  "local_port": 8001,
-  "remote_port": 8002
+  "local_port": 6667,
+  "remote_port": 7777,
+  "bucket": "swztest",
+  "region": "oss-cn-beijing"
 }
