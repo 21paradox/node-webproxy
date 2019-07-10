@@ -131,7 +131,7 @@ function debounceStream() {
       callback(null, chunk);
   }
   const dstream = new Transform({
-    transform: _.debounce(transform, 300, { maxWait: 3000 })
+    transform: _.debounce(transform, 300, { maxWait: 400 })
   });
   return dstream
 }

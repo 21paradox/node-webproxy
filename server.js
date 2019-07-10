@@ -42,6 +42,9 @@ const server = http.createServer(function (req, res) {
                     const key = lib.addPrefix(md5);
 
                     lib.ossClient.put(key, buf).then(() => {
+                        if(res.isEnd) {
+                            return;
+                        }
                         res.write(key);
                         res.write('\n');
                         dstream.resume();
@@ -52,6 +55,7 @@ const server = http.createServer(function (req, res) {
                 });
                 dstream.on('end', () => {
                     res.end(); 
+                    res.isEnd = true;
                 })
             });
 
@@ -66,6 +70,7 @@ const server = http.createServer(function (req, res) {
                 }
                 console.log(err);
                 res.end(errstr);
+                res.isEnd = true;
             });
         });
 
@@ -91,16 +96,28 @@ const server = http.createServer(function (req, res) {
             res.writeHead(200, {});
             res._send('');
         });
+        const dstream = target.pipe(lib.debounceStream());
 
-        target.on('data', function (data) {
-            res.write(data);
-        });
+          dstream.on('data', (buf) => {
+                    dstream.pause();
+                    const md5 = lib.getMd5(buf);
+                    const key = lib.addPrefix(md5);
+
+                    lib.ossClient.put(key, buf).then(() => {
+                        res.write(key);
+                        res.write('\n');
+                        dstream.resume();
+                        setTimeout(() => {
+                            lib.ossClient.delete(key);
+                        }, 15 * 1000);
+                    });
+                });
 
         ee.on(uid, function (data) {
             target.write(data);
         });
 
-        target.on('close', function () {
+        dstream.on('end', () => {
             if (err) {
                 let errstr = JSON.stringify(serializeError(err), null, 4);
                 res.end(errstr);
@@ -109,6 +126,7 @@ const server = http.createServer(function (req, res) {
             }
             ee.removeAllListeners(uid);
         });
+
 
         target.on('error', function (_err) {
             err = _err;

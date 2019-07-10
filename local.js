@@ -71,17 +71,17 @@ server.on('request', function (req, res) {
                     return;
                 }
                 lib.ossClient.get(line).then((result) => {
-                    if(!res.isEnd) {
+                    if (!res.isEnd) {
 
-                    res.write(result.content);
-                    splitStream.resume();
+                        res.write(result.content);
+                        splitStream.resume();
                     }
                 })
-                .catch((e) => {
-                    console.log(e, line);
-                })
+                    .catch((e) => {
+                        console.log(e, line);
+                    })
             });
-            remoteRes.on('end', () => {
+            splitStream.on('end', () => {
                 res.end();
             })
             // remoteRes.pipe(res);
@@ -158,11 +158,25 @@ server.on('connect', function (req, socket, head) {
             sendReq();
         });
 
-        remmoteRes.on('data', function (data) {
-            socket.write(data);
+        const splitStream = remmoteRes.pipe(split());
+        splitStream.on('data', (line) => {
+            splitStream.pause();
+            if (!line) {
+                return;
+            }
+            lib.ossClient.get(line).then((result) => {
+                socket.write(result.content);
+                splitStream.resume();
+            })
+                .catch((e) => {
+                    console.log(e, line);
+                })
         });
+        // remmoteRes.on('data', function (data) {
+        //     socket.write(data);
+        // });
 
-        remmoteRes.on('end', function () {
+        splitStream.on('end', function () {
             socket.destroy();
         });
 
