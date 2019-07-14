@@ -167,7 +167,11 @@ function _synReply({ socket, code, reason, headers }) {
     for (let key in headers) {
         headerLines += key + ': ' + headers[key] + '\r\n';
     }
-    socket.write(statusLine + headerLines + '\r\n', 'UTF-8');
+    try {
+        socket.write(statusLine + headerLines + '\r\n', 'UTF-8');
+    } catch (e) {
+        console.log(e)
+    }
 }
 
 function doHttpUp(cfg) {
