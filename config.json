@@ -2,6 +2,8 @@
   "hostname": "localhost",
   "local_port": 6667,
   "remote_port": 7777,
-  "bucket": "swztest",
-  "region": "oss-cn-beijing"
+  "bucket": "xxxxx",
+  "region": "oss-cn-xxxxxx",
+  "accessKeyId": "xxxxxx",
+  "accessKeySecret": "xxxxxx"
 }

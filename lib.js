@@ -1,33 +1,33 @@
-const httpHeaders = require("know-your-http-well/json/headers.json");
-const httpMethods = require("know-your-http-well/json/methods.json");
-const httpMediaTypes = require("know-your-http-well/json/media-types.json");
-const httpStatusCodes = require("know-your-http-well/json/status-codes.json");
-const zlib = require("zlib");
-const crypto = require("crypto");
-const _ = require('lodash');
-const  Transform  = require('stream').Transform
-const CONF = require('./config.json');
+const httpHeaders = require('know-your-http-well/json/headers.json');
+const httpMethods = require('know-your-http-well/json/methods.json');
+const httpMediaTypes = require('know-your-http-well/json/media-types.json');
+const httpStatusCodes = require('know-your-http-well/json/status-codes.json');
+const zlib = require('zlib');
+const crypto = require('crypto');
+const { Transform } = require('stream');
 const OSS = require('ali-oss');
+const streamBuffers = require('stream-buffers');
+const CONF = require('./config.json');
 
 const dictArr = [];
 
-httpHeaders.forEach(v => {
+httpHeaders.forEach((v) => {
   dictArr.push(v.header.toLowerCase());
 });
 
-httpMethods.forEach(v => {
+httpMethods.forEach((v) => {
   dictArr.push(v.method.toLowerCase());
 });
 
-httpMediaTypes.forEach(v => {
+httpMediaTypes.forEach((v) => {
   dictArr.push(v.media_type);
 });
 
-httpStatusCodes.forEach(v => {
+httpStatusCodes.forEach((v) => {
   dictArr.push(v.code);
 });
 
-const newDict = dictArr.join("");
+const newDict = dictArr.join('');
 const httpDict = Buffer.from(newDict);
 
 function compressReqCfg(reqConfig, cb) {
@@ -38,26 +38,26 @@ function compressReqCfg(reqConfig, cb) {
     reqCfgRaw,
     {
       dictionary: httpDict,
-      level: 9
+      level: 9,
     },
     (err, buf) => {
       if (err) {
         cb(err);
       } else {
-        const reqCfgBase64 = buf.toString("base64");
+        const reqCfgBase64 = buf.toString('base64');
         cb(null, reqCfgBase64);
       }
-    }
+    },
   );
 }
 
 function decompressCfg(base64Str, cb) {
-  const reqcfgBuffer = Buffer.from(base64Str, "base64");
+  const reqcfgBuffer = Buffer.from(base64Str, 'base64');
 
   zlib.inflate(
     reqcfgBuffer,
     {
-      dictionary: httpDict
+      dictionary: httpDict,
     },
     (err, buf) => {
       if (err) {
@@ -67,92 +67,114 @@ function decompressCfg(base64Str, cb) {
         const reqcfg = JSON.parse(reqCfgStr);
         cb(null, reqcfg);
       }
-    }
+    },
   );
 }
 
 function getMd5(buf) {
   return crypto
-    .createHash("md5")
+    .createHash('md5')
     .update(buf)
-    .digest("hex");
+    .digest('hex');
 }
 
-// function pushDebounce(cb) {
-//   let bufQueue = [];
-//   let endCb;
-//   const runFn = _.debounce(() => {
-//     const queueToSend = Buffer.concat(bufQueue);
-//     bufQueue = [];
-
-//     cb(queueToSend, endCb);
-//   },
-//     300,
-//     { maxWait: 400 }
-//   );
-
-//   function push(buf) {
-//     bufQueue.push(buf);
-//     runFn();
-//   }
-
-//   function onEnd(callback) {
-//     if (bufQueue.length > 0) {
-//       endCb = callback;
-//     } else {
-//       callback();
-//     }
-//   }
-
-//   return {
-//     push,
-//     onEnd,
-//   };
-// }
+const ossClient = new OSS({
+  accessKeyId: process.env.accessKeyId || CONF.accessKeyId,
+  accessKeySecret: process.env.accessKeySecret || CONF.accessKeySecret,
+  bucket: CONF.bucket,
+  region: CONF.region,
+});
 
 function addPrefix(str) {
-  return 'proxy/' + str;
+  return `proxy/${str}`;
 }
 function removePrefix(str) {
-  return str.replace(/^proxy\//, '')
+  return str.replace(/^proxy\//, '');
 }
 
 function wait(time) {
   return new Promise((resolve) => {
-      setTimeout(() => {
-          resolve();
-      }, time)
-  })
-}
-
-
-function debounceStream() {
-  const transform = (chunk, encoding, callback) => {
-      callback(null, chunk);
-  }
-  const dstream = new Transform({
-    transform: _.debounce(transform, 300, { maxWait: 400 })
+    setTimeout(() => {
+      resolve();
+    }, time);
   });
-  return dstream
 }
 
-const ossClient = new OSS({
-  accessKeyId: process.env.accessKeyId,
-  accessKeySecret: process.env.accessKeySecret,
-  bucket: CONF.bucket,
-  region: CONF.region,
-});
+function copyRes(res) {
+  const bufStream = new streamBuffers.ReadableStreamBuffer({
+    frequency: 400, // in milliseconds.
+    chunkSize: 64 * 1024, // in bytes.
+  });
+  // remoteRes.pipe(bufStream); // 300ms cache
+  res.on('data', (data) => {
+    bufStream.put(data);
+  });
+  res.on('end', () => {
+    bufStream.stop();
+  });
+  res.on('error', (e) => {
+    console.log(e);
+  });
+  return bufStream;
+}
+
+const splitChar = 'ψ';
+
+function dataToLine() {
+  const transform = (chunk, encoding, callback) => {
+    const md5 = getMd5(chunk);
+    const key = addPrefix(md5);
+
+    if (chunk.length > 1000) {
+      ossClient.put(key, chunk).then(() => {
+        console.log('push ', key, chunk.length);
+        callback(null, key + splitChar);
+      });
+    } else {
+      console.log('push plain', chunk.length);
+      callback(null, chunk);
+    }
+  };
+
+  const dstream = new Transform({
+    transform,
+  });
+  return dstream;
+}
+
+
+function lineToDataStrip() {
+  const transform = function (chunk, enc, callback) {
+    const lineStr = chunk.slice(0, 6).toString();
+
+    if (lineStr.match(/^proxy\//)) {
+      const key = chunk.toString().replace(/ψ$/, '');
+      ossClient.get(key).then((result) => {
+        callback(null, result.content);
+      });
+    } else {
+      callback(null, chunk);
+    }
+  };
+
+  const rs = new Transform({
+    transform,
+  });
+  return rs;
+}
 
 
 module.exports = {
   httpDict,
   compressReqCfg,
   decompressCfg,
-  // pushDebounce,
   getMd5,
   addPrefix,
   removePrefix,
   wait,
-  debounceStream,
+  dataToLine,
   ossClient,
+  copyRes,
+  splitChar,
+  lineToDataStrip,
 };

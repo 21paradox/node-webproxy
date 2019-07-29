@@ -1,174 +1,145 @@
 const http = require('http');
-const url = require('url');
 
-const lib = require('./lib');
 const EventEmitter = require('events');
 const net = require('net');
 const serializeError = require('serialize-error');
+const lib = require('./lib');
 
 const ee = new EventEmitter();
 
 const keepAliveAgent = new http.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 50 * 1000,
+  keepAlive: true,
+  keepAliveMsecs: 50 * 1000,
 });
 
 const CONF = require('./config.json');
 
-const server = http.createServer(function (req, res) {
+const server = http.createServer((req, res) => {
+  if (req.url === '/proxyhttp') {
+    const reqcfgRaw = req.headers.reqcfg;
 
-    if (req.url === '/proxyhttp') {
-
-        let reqcfgRaw = req.headers.reqcfg;
-
-        if (!reqcfgRaw) {
-            res.statusCode = 500;
-            res.end(JSON.stringify({
-                msg: 'should provide reqcfg'
-            }))
-            return;
-        }
-
-        lib.decompressCfg(reqcfgRaw, function (err, reqcfg) {
-            reqcfg.agent = keepAliveAgent;
-            var proxyReq = http.request(reqcfg);
-
-            proxyReq.on('response', function (remoteRes) {
-                res.writeHead(remoteRes.statusCode, remoteRes.headers);
-                const dstream = remoteRes.pipe(lib.debounceStream());
-                dstream.on('data', (buf) => {
-                    dstream.pause();
-                    const md5 = lib.getMd5(buf);
-                    const key = lib.addPrefix(md5);
-
-                    lib.ossClient.put(key, buf).then(() => {
-                        if(res.isEnd) {
-                            return;
-                        }
-                        res.write(key);
-                        res.write('\n');
-                        dstream.resume();
-                        setTimeout(() => {
-                            lib.ossClient.delete(key);
-                        }, 15 * 1000);
-                    });
-                });
-                dstream.on('end', () => {
-                    res.end(); 
-                    res.isEnd = true;
-                })
-            });
-
-            req.pipe(proxyReq);
-
-            proxyReq.on('error', function (err) {
-                let errstr = JSON.stringify(serializeError(err), null, 4);
-                if ('ENOTFOUND' == err.code) {
-                    res.writeHead(404);
-                } else {
-                    res.writeHead(500);
-                }
-                console.log(err);
-                res.end(errstr);
-                res.isEnd = true;
-            });
-        });
-
-    } else if (req.url === '/httpsconnect') {
-
-        let conncfgRaw = Buffer.from(req.headers.conncfg, 'base64');
-        let conncfg = JSON.parse(conncfgRaw);
-        let uid = req.headers.uid;
-
-        if (!conncfg) {
-            res.statusCode = 500;
-            res.end('should provide reqcfg');
-            return;
-        }
-
-        let target = net.connect(conncfg);
-        let connected = false;
-        let err = null;
-
-        target.on('connect', function () {
-            connected = true;
-
-            res.writeHead(200, {});
-            res._send('');
-        });
-        const dstream = target.pipe(lib.debounceStream());
-
-          dstream.on('data', (buf) => {
-                    dstream.pause();
-                    const md5 = lib.getMd5(buf);
-                    const key = lib.addPrefix(md5);
-
-                    lib.ossClient.put(key, buf).then(() => {
-                        res.write(key);
-                        res.write('\n');
-                        dstream.resume();
-                        setTimeout(() => {
-                            lib.ossClient.delete(key);
-                        }, 15 * 1000);
-                    });
-                });
-
-        ee.on(uid, function (data) {
-            target.write(data);
-        });
-
-        dstream.on('end', () => {
-            if (err) {
-                let errstr = JSON.stringify(serializeError(err), null, 4);
-                res.end(errstr);
-            } else {
-                res.end();
-            }
-            ee.removeAllListeners(uid);
-        });
-
-
-        target.on('error', function (_err) {
-            err = _err;
-
-            if (!connected) {
-                res.writeHead(500);
-            }
-        });
-
-    } else if (req.url === '/httpsup') {
-
-        let uid = req.headers.uid;
-
-        if (!uid) {
-            res.statusCode = 500;
-            res.end('should provide uid');
-            return;
-        }
-
-        req.on('data', function (data) {
-            ee.emit(uid, data);
-        });
-
-        req.on('end', function () {
-            res.statusCode = 200;
-            res.end();
-        });
-
-    } else {
-        res.end('asd');
+    if (!reqcfgRaw) {
+      res.statusCode = 500;
+      res.end(
+        JSON.stringify({
+          msg: 'should provide reqcfg',
+        }),
+      );
+      return;
     }
-});
 
+    lib.decompressCfg(reqcfgRaw, (decerr, reqcfg) => {
+      // eslint-disable-next-line no-param-reassign
+      reqcfg.agent = keepAliveAgent;
+      const proxyReq = http.request(reqcfg);
+
+      proxyReq.on('response', (remoteRes) => {
+        res.writeHead(remoteRes.statusCode, remoteRes.headers);
+
+        const bufStream = lib.copyRes(remoteRes);
+        const dstream = bufStream.pipe(lib.dataToLine());
+        dstream.pipe(res);
+      });
+
+      req.pipe(proxyReq);
+
+      proxyReq.on('error', (err) => {
+        const errstr = JSON.stringify(serializeError(err), null, 4);
+        if (err.code === 'ENOTFOUND') {
+          res.writeHead(404);
+        } else {
+          res.writeHead(500);
+        }
+        console.log(err, 'proxyReq');
+        res.end(errstr);
+        res.isEnd = true;
+      });
+    });
+  } else if (req.url === '/httpsconnect') {
+    const conncfgRaw = Buffer.from(req.headers.conncfg, 'base64');
+    const conncfg = JSON.parse(conncfgRaw);
+    const { uid } = req.headers;
+
+    if (!conncfg) {
+      res.statusCode = 500;
+      res.end('should provide reqcfg');
+      return;
+    }
+
+    const target = net.connect(conncfg);
+    let connected = false;
+    let err = null;
+
+    target.on('connect', () => {
+      connected = true;
+
+      res.writeHead(200, {});
+      // eslint-disable-next-line no-underscore-dangle
+      res._send('');
+    });
+
+    const bufStream = lib.copyRes(target);
+    const dstream = bufStream.pipe(
+      lib.dataToLine({
+        noPushCount: 10,
+      }),
+    );
+    dstream.pipe(res);
+
+    ee.on(uid, (data) => {
+      target.write(data);
+    });
+
+    target.on('close', () => {
+      if (err) {
+        const errstr = JSON.stringify(serializeError(err), null, 4);
+        res.end(errstr);
+      } else {
+        res.end();
+      }
+      ee.removeAllListeners(uid);
+    });
+
+    target.on('error', (_err) => {
+      err = _err;
+      console.log({
+        _err,
+        conncfg,
+      });
+      if (!connected) {
+        res.writeHead(500);
+      }
+    });
+  } else if (req.url === '/httpsup') {
+    const { uid } = req.headers;
+
+    if (!uid) {
+      res.statusCode = 500;
+      res.end('should provide uid');
+      return;
+    }
+
+    req.on('data', (data) => {
+      ee.emit(uid, data);
+    });
+
+    req.on('end', () => {
+      res.statusCode = 200;
+      res.end();
+    });
+  } else {
+    res.end('asd');
+  }
+});
 
 let port;
 
 if (process.env.PORT) {
-    port = parseInt(process.env.PORT);
+  port = parseInt(process.env.PORT, 10);
 } else {
-    port = parseInt(CONF.remote_port);
+  port = parseInt(CONF.remote_port, 10);
 }
 
-server.listen(port, '0.0.0.0', function () {
-    console.log(`listening on ${CONF.remote_port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`listening on ${CONF.remote_port}`);
 });
