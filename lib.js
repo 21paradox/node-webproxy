@@ -81,8 +81,8 @@ function getMd5(buf) {
 const ossClient = new OSS({
   accessKeyId: process.env.accessKeyId || CONF.accessKeyId,
   accessKeySecret: process.env.accessKeySecret || CONF.accessKeySecret,
-  bucket: CONF.bucket,
-  region: CONF.region,
+  bucket: process.env.bucket || CONF.bucket,
+  region: process.env.region || CONF.region,
 });
 
 function addPrefix(str) {
@@ -90,14 +90,6 @@ function addPrefix(str) {
 }
 function removePrefix(str) {
   return str.replace(/^proxy\//, '');
-}
-
-function wait(time) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve();
-    }, time);
-  });
 }
 
 function copyRes(res) {
@@ -119,6 +111,7 @@ function copyRes(res) {
 }
 
 const splitChar = 'ψ';
+const stripSplit = new RegExp(`${splitChar}$`);
 
 function dataToLine() {
   const transform = (chunk, encoding, callback) => {
@@ -127,11 +120,9 @@ function dataToLine() {
 
     if (chunk.length > 1000) {
       ossClient.put(key, chunk).then(() => {
-        console.log('push ', key, chunk.length);
         callback(null, key + splitChar);
       });
     } else {
-      console.log('push plain', chunk.length);
       callback(null, chunk);
     }
   };
@@ -148,7 +139,7 @@ function lineToDataStrip() {
     const lineStr = chunk.slice(0, 6).toString();
 
     if (lineStr.match(/^proxy\//)) {
-      const key = chunk.toString().replace(/ψ$/, '');
+      const key = chunk.toString().replace(stripSplit, '');
       ossClient.get(key).then((result) => {
         callback(null, result.content);
       });
@@ -171,7 +162,6 @@ module.exports = {
   getMd5,
   addPrefix,
   removePrefix,
-  wait,
   dataToLine,
   ossClient,
   copyRes,
