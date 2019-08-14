@@ -95,7 +95,7 @@ function removePrefix(str) {
 function copyRes(res) {
   const bufStream = new streamBuffers.ReadableStreamBuffer({
     frequency: 200, // in milliseconds.
-    chunkSize: 256 * 1024, // in bytes.
+    chunkSize: 128 * 1024, // in bytes.
   });
   // remoteRes.pipe(bufStream); // 300ms cache
   res.on('data', (data) => {
@@ -118,7 +118,7 @@ function dataToLine() {
     const md5 = getMd5(chunk);
     const key = addPrefix(md5);
 
-    if (chunk.length > 1000) {
+    if (chunk.length > 20 * 1024) {
       ossClient.put(key, chunk).then(() => {
         callback(null, key + splitChar);
       });
