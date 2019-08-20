@@ -8,6 +8,7 @@ const server = http.createServer();
 const uuid = require('uuid');
 const _ = require('lodash');
 const lib = require('./lib');
+const split = require('binary-split')
 
 // https://github.com/jshttp/cookie/blob/master/index.js#L28
 // eslint-disable-next-line no-control-regex
@@ -62,7 +63,7 @@ server.on('request', (req, res) => {
     proxyReq.on('response', (remoteRes) => {
       res.writeHead(remoteRes.statusCode, remoteRes.headers);
       //  const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToData());
-      const dataStream = remoteRes.pipe(lib.lineToDataStrip());
+      const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToDataStrip());
       dataStream.pipe(res);
     });
 
@@ -79,7 +80,7 @@ server.on('request', (req, res) => {
         res.end(errstr);
         res.isEnd = true;
       }
-      console.log(errstr);
+      console.log(errstr, 'errstr');
     });
   });
 });
@@ -111,7 +112,7 @@ function doHttpUp(cfg) {
   });
 
   dataReq.on('error', (e) => {
-    console.log(e);
+    console.log(e, 'dataReq');
   });
 
   dataReq.write(buf);

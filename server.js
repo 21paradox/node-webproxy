@@ -79,11 +79,7 @@ const server = http.createServer((req, res) => {
     });
 
     const bufStream = lib.copyRes(target);
-    const dstream = bufStream.pipe(
-      lib.dataToLine({
-        noPushCount: 10,
-      }),
-    );
+    const dstream = bufStream.pipe(lib.dataToLine());
     dstream.pipe(res);
 
     ee.on(uid, (data) => {

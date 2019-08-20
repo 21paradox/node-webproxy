@@ -94,7 +94,7 @@ function removePrefix(str) {
 
 function copyRes(res) {
   const bufStream = new streamBuffers.ReadableStreamBuffer({
-    frequency: 200, // in milliseconds.
+    frequency: 300, // in milliseconds.
     chunkSize: 128 * 1024, // in bytes.
   });
   // remoteRes.pipe(bufStream); // 300ms cache
@@ -110,7 +110,7 @@ function copyRes(res) {
   return bufStream;
 }
 
-const splitChar = 'ψ';
+const splitChar = 'ψψψ';
 const stripSplit = new RegExp(`${splitChar}$`);
 
 function dataToLine() {
