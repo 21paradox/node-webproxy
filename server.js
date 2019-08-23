@@ -14,7 +14,7 @@ const keepAliveAgent = new http.Agent({
 
 const CONF = require('./config.json');
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   if (req.url === '/proxyhttp') {
     const reqcfgRaw = req.headers.reqcfg;
 
@@ -28,32 +28,33 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    lib.decompressCfg(reqcfgRaw, (decerr, reqcfg) => {
-      // eslint-disable-next-line no-param-reassign
-      reqcfg.agent = keepAliveAgent;
-      const proxyReq = http.request(reqcfg);
+    const reqcfg = await lib.decompressCfg(reqcfgRaw);
+    // eslint-disable-next-line no-param-reassign
+    reqcfg.agent = keepAliveAgent;
+    const proxyReq = http.request(reqcfg);
 
-      proxyReq.on('response', (remoteRes) => {
-        res.writeHead(remoteRes.statusCode, remoteRes.headers);
-
-        const bufStream = lib.copyRes(remoteRes);
-        const dstream = bufStream.pipe(lib.dataToLine());
-        dstream.pipe(res);
+    proxyReq.on('response', async (remoteRes) => {
+      const resHeadStr = await lib.compressReqCfg(remoteRes.headers);
+      res.writeHead(remoteRes.statusCode, {
+        resHeadStr,
       });
+      const bufStream = lib.copyRes(remoteRes);
+      const dstream = bufStream.pipe(lib.dataToLine());
+      dstream.pipe(res);
+    });
 
-      req.pipe(proxyReq);
+    req.pipe(proxyReq);
 
-      proxyReq.on('error', (err) => {
-        const errstr = JSON.stringify(serializeError(err), null, 4);
-        if (err.code === 'ENOTFOUND') {
-          res.writeHead(404);
-        } else {
-          res.writeHead(500);
-        }
-        console.log(err, 'proxyReq');
-        res.end(errstr);
-        res.isEnd = true;
-      });
+    proxyReq.on('error', (err) => {
+      const errstr = JSON.stringify(serializeError(err), null, 4);
+      if (err.code === 'ENOTFOUND') {
+        res.writeHead(404);
+      } else {
+        res.writeHead(500);
+      }
+      console.log(err, 'proxyReq');
+      res.end(errstr);
+      res.isEnd = true;
     });
   } else if (req.url === '/httpsconnect') {
     const conncfgRaw = Buffer.from(req.headers.conncfg, 'base64');

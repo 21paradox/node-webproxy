@@ -4,9 +4,9 @@ const httpMediaTypes = require('know-your-http-well/json/media-types.json');
 const httpStatusCodes = require('know-your-http-well/json/status-codes.json');
 const zlib = require('zlib');
 const crypto = require('crypto');
-const { Transform } = require('stream');
 const OSS = require('ali-oss');
 const streamBuffers = require('stream-buffers');
+const Octopus = require('oct');
 const CONF = require('./config.json');
 
 const dictArr = [];
@@ -30,45 +30,48 @@ httpStatusCodes.forEach((v) => {
 const newDict = dictArr.join('');
 const httpDict = Buffer.from(newDict);
 
-function compressReqCfg(reqConfig, cb) {
+function compressReqCfg(reqConfig) {
   let reqCfgRaw = JSON.stringify(reqConfig);
   reqCfgRaw = Buffer.from(reqCfgRaw);
 
-  zlib.deflate(
-    reqCfgRaw,
-    {
-      dictionary: httpDict,
-      level: 9,
-    },
-    (err, buf) => {
-      if (err) {
-        cb(err);
-      } else {
-        const reqCfgBase64 = buf.toString('base64');
-        cb(null, reqCfgBase64);
-      }
-    },
-  );
+  return new Promise((resolve, reject) => {
+    zlib.deflate(
+      reqCfgRaw,
+      {
+        dictionary: httpDict,
+        level: 9,
+      },
+      (err, buf) => {
+        if (err) {
+          reject(err);
+        } else {
+          const reqCfgBase64 = buf.toString('base64');
+          resolve(reqCfgBase64);
+        }
+      },
+    );
+  });
 }
 
-function decompressCfg(base64Str, cb) {
+function decompressCfg(base64Str) {
   const reqcfgBuffer = Buffer.from(base64Str, 'base64');
-
-  zlib.inflate(
-    reqcfgBuffer,
-    {
-      dictionary: httpDict,
-    },
-    (err, buf) => {
-      if (err) {
-        cb(err);
-      } else {
-        const reqCfgStr = buf.toString();
-        const reqcfg = JSON.parse(reqCfgStr);
-        cb(null, reqcfg);
-      }
-    },
-  );
+  return new Promise((resolve, reject) => {
+    zlib.inflate(
+      reqcfgBuffer,
+      {
+        dictionary: httpDict,
+      },
+      (err, buf) => {
+        if (err) {
+          reject(err);
+        } else {
+          const reqCfgStr = buf.toString();
+          const reqcfg = JSON.parse(reqCfgStr);
+          resolve(reqcfg);
+        }
+      },
+    );
+  });
 }
 
 function getMd5(buf) {
@@ -94,8 +97,8 @@ function removePrefix(str) {
 
 function copyRes(res) {
   const bufStream = new streamBuffers.ReadableStreamBuffer({
-    frequency: 300, // in milliseconds.
-    chunkSize: 128 * 1024, // in bytes.
+    frequency: 400, // in milliseconds.
+    chunkSize: 256 * 1024, // in bytes.
   });
   // remoteRes.pipe(bufStream); // 300ms cache
   res.on('data', (data) => {
@@ -114,43 +117,46 @@ const splitChar = 'ψψψ';
 const stripSplit = new RegExp(`${splitChar}$`);
 
 function dataToLine() {
-  const transform = (chunk, encoding, callback) => {
+  const transform = function (chunk, callback) {
     const md5 = getMd5(chunk);
     const key = addPrefix(md5);
 
+    console.log('length: ', chunk.length);
     if (chunk.length > 20 * 1024) {
       ossClient.put(key, chunk).then(() => {
+        console.log(`send: ${key}`);
         callback(null, key + splitChar);
       });
     } else {
-      callback(null, chunk);
+      console.log(`send: ${getMd5(chunk)}`);
+      callback(null, Buffer.concat([
+        chunk,
+        Buffer.from(splitChar, 'utf-8'),
+      ]));
     }
   };
 
-  const dstream = new Transform({
-    transform,
-  });
+  const dstream = new Octopus.Queue(transform);
   return dstream;
 }
 
 
 function lineToDataStrip() {
-  const transform = function (chunk, enc, callback) {
+  const transform = function (chunk, callback) {
     const lineStr = chunk.slice(0, 6).toString();
 
     if (lineStr.match(/^proxy\//)) {
+      console.log(`get: ${chunk.toString()}`);
       const key = chunk.toString().replace(stripSplit, '');
       ossClient.get(key).then((result) => {
         callback(null, result.content);
       });
     } else {
+      console.log(`get: ${getMd5(chunk)}`);
       callback(null, chunk);
     }
   };
-
-  const rs = new Transform({
-    transform,
-  });
+  const rs = new Octopus.Queue(transform);
   return rs;
 }
 

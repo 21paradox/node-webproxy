@@ -7,8 +7,8 @@ const server = http.createServer();
 
 const uuid = require('uuid');
 const _ = require('lodash');
+const split = require('binary-split');
 const lib = require('./lib');
-const split = require('binary-split')
 
 // https://github.com/jshttp/cookie/blob/master/index.js#L28
 // eslint-disable-next-line no-control-regex
@@ -30,7 +30,7 @@ const keepAliveAgent = new sender.Agent({
   keepAliveMsecs: 50 * 1000,
 });
 
-server.on('request', (req, res) => {
+server.on('request', async (req, res) => {
   const parsed = url.parse(req.url);
   const { headers } = req;
   // remove invalid cookie
@@ -48,39 +48,43 @@ server.on('request', (req, res) => {
     headers,
   };
 
-  lib.compressReqCfg(reqConfig, (errdec, reqCfgBase64) => {
-    const proxyReq = sender.request({
-      hostname: CONF.hostname,
-      port: CONF.remote_port,
-      path: '/proxyhttp',
-      headers: {
-        reqcfg: reqCfgBase64,
-      },
-      method: reqConfig.method,
-      agent: keepAliveAgent,
-    });
+  const reqCfgBase64 = await lib.compressReqCfg(reqConfig);
+  const proxyReq = sender.request({
+    hostname: CONF.hostname,
+    port: CONF.remote_port,
+    path: '/proxyhttp',
+    headers: {
+      reqcfg: reqCfgBase64,
+    },
+    method: reqConfig.method,
+    agent: keepAliveAgent,
+  });
 
-    proxyReq.on('response', (remoteRes) => {
-      res.writeHead(remoteRes.statusCode, remoteRes.headers);
-      //  const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToData());
-      const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToDataStrip());
-      dataStream.pipe(res);
-    });
+  proxyReq.on('response', async (remoteRes) => {
+    const remoteHead = await lib.decompressCfg(remoteRes.headers.resheadstr);
+    res.writeHead(remoteRes.statusCode, remoteHead);
+    const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToDataStrip());
+    dataStream.pipe(res);
+  });
+  req.pipe(proxyReq);
 
-    req.pipe(proxyReq);
-
-    proxyReq.on('error', (err) => {
-      const errstr = JSON.stringify(serializeError(err), null, 4);
-      if (err.code === 'ENOTFOUND') {
-        res.writeHead(404);
-      } else {
-        res.writeHead(500);
-      }
-      if (err.bytesParsed > 400) {
-        res.end(errstr);
-        res.isEnd = true;
-      }
-      console.log(errstr, 'errstr');
+  proxyReq.on('error', (err) => {
+    const errstr = JSON.stringify(serializeError(err), null, 4);
+    if (err.code === 'ENOTFOUND') {
+      res.writeHead(404);
+    } else {
+      res.writeHead(500);
+    }
+    if (err.bytesParsed > 400) {
+      res.end(errstr);
+      res.isEnd = true;
+    }
+    console.log({
+      err,
+      // headers,
+      // rhead: _remoteRes.headers,
+      // reqConfig,
+      // reqCfgBase64
     });
   });
 });
@@ -170,7 +174,7 @@ server.on('connect', (req, socket) => {
       sendReq();
     });
 
-    const dataStream = remoteRes.pipe(lib.lineToDataStrip());
+    const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToDataStrip());
     dataStream.pipe(socket);
 
     remoteRes.on('end', () => {
