@@ -116,25 +116,32 @@ function copyRes(res) {
 const splitChar = 'ψψψ';
 
 function dataToLine() {
-  let sendPlainTime = Date.now();
+  let isEnd = false;
+  let timer;
+  const pingBeforeIdle = (curStream) => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => {
+      if (isEnd) {
+        return;
+      }
+      curStream.push(splitChar);
+      pingBeforeIdle(curStream);
+    }, 40 * 1000);
+  };
+
   const transform = function (chunk, callback) {
     const md5 = getMd5(chunk);
     const key = addPrefix(md5);
 
-    let doSendPlain = false;
-    if (Date.now() - sendPlainTime > 1000 * 10) { // prevent idle > 10s
-      doSendPlain = true;
-    } else if (chunk.length > 20 * 1024) {
-      doSendPlain = true;
-    }
-
     console.log('length: ', chunk.length);
-    if (doSendPlain) {
+    if (chunk.length > 20 * 1024) {
       ossClient.put(key, chunk).then(() => {
         chunk = null;
         console.log(`send: ${key}`);
         callback(null, key + splitChar);
-        sendPlainTime = Date.now();
+        pingBeforeIdle(this);
       });
     } else {
       console.log(`send: ${getMd5(chunk)}`);
@@ -143,10 +150,20 @@ function dataToLine() {
         Buffer.from(splitChar, 'utf-8'),
       ]));
       chunk = null;
+      pingBeforeIdle(this);
     }
   };
 
   const dstream = new Octopus.Queue(transform);
+
+  dstream.on('end', () => {
+    isEnd = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  });
+
   return dstream;
 }
 
