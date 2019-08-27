@@ -67,6 +67,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    console.log({
+      conncfg
+    })
+
     const target = net.connect(conncfg);
     let connected = false;
     let err = null;
@@ -92,8 +96,9 @@ const server = http.createServer(async (req, res) => {
         const errstr = JSON.stringify(serializeError(err), null, 4);
         res.end(errstr);
       } else {
-        res.end();
+        // res.end();
       }
+      console.log('onclose', err);
       ee.removeAllListeners(uid);
     });
 
