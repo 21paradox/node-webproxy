@@ -97,8 +97,8 @@ function removePrefix(str) {
 
 function copyRes(res) {
   const bufStream = new streamBuffers.ReadableStreamBuffer({
-    frequency: 400, // in milliseconds.
-    chunkSize: 256 * 1024, // in bytes.
+    frequency: 200, // in milliseconds.
+    chunkSize: 512 * 1024, // in bytes.
   });
   // remoteRes.pipe(bufStream); // 300ms cache
   res.on('data', (data) => {
@@ -124,6 +124,7 @@ function dataToLine() {
     console.log('length: ', chunk.length);
     if (chunk.length > 20 * 1024) {
       ossClient.put(key, chunk).then(() => {
+        chunk = null;
         console.log(`send: ${key}`);
         callback(null, key + splitChar);
       });
@@ -133,6 +134,7 @@ function dataToLine() {
         chunk,
         Buffer.from(splitChar, 'utf-8'),
       ]));
+      chunk = null;
     }
   };
 
@@ -147,7 +149,7 @@ function lineToDataStrip() {
 
     if (lineStr.match(/^proxy\//)) {
       console.log(`get: ${chunk.toString()}`);
-      const key = chunk.toString().replace(stripSplit, '');
+      const key = chunk.toString();
       ossClient.get(key).then((result) => {
         callback(null, result.content);
       });
