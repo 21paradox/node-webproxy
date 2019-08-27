@@ -8,6 +8,7 @@ const OSS = require('ali-oss');
 const streamBuffers = require('stream-buffers');
 const Octopus = require('oct');
 const CONF = require('./config.json');
+const through2 = require('through2')
 
 const dictArr = [];
 
@@ -154,7 +155,7 @@ function dataToLine() {
     }
   };
 
-  const dstream = new Octopus.Queue(transform);
+  const dstream =  through2(transform);
 
   dstream.on('end', () => {
     isEnd = true;
