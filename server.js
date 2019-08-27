@@ -99,7 +99,9 @@ const server = http.createServer(async (req, res) => {
         // res.end();
       }
       console.log('onclose', err);
-      ee.removeAllListeners(uid);
+      setTimeout(() => {
+        ee.removeAllListeners(uid);
+      }, 2000);
     });
 
     target.on('error', (_err) => {
