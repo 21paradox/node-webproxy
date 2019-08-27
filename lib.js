@@ -114,19 +114,27 @@ function copyRes(res) {
 }
 
 const splitChar = 'ψψψ';
-const stripSplit = new RegExp(`${splitChar}$`);
 
 function dataToLine() {
+  let sendPlainTime = Date.now();
   const transform = function (chunk, callback) {
     const md5 = getMd5(chunk);
     const key = addPrefix(md5);
 
+    let doSendPlain = false;
+    if (Date.now() - sendPlainTime > 1000 * 10) { // prevent idle > 10s
+      doSendPlain = true;
+    } else if (chunk.length > 20 * 1024) {
+      doSendPlain = true;
+    }
+
     console.log('length: ', chunk.length);
-    if (chunk.length > 20 * 1024) {
+    if (doSendPlain) {
       ossClient.put(key, chunk).then(() => {
         chunk = null;
         console.log(`send: ${key}`);
         callback(null, key + splitChar);
+        sendPlainTime = Date.now();
       });
     } else {
       console.log(`send: ${getMd5(chunk)}`);
@@ -142,17 +150,33 @@ function dataToLine() {
   return dstream;
 }
 
+function wait(time) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, time);
+  });
+}
 
 function lineToDataStrip() {
   const transform = function (chunk, callback) {
     const lineStr = chunk.slice(0, 6).toString();
 
     if (lineStr.match(/^proxy\//)) {
-      console.log(`get: ${chunk.toString()}`);
+      console.log(`get: ${chunk.slice(0, 40).toString()}`);
       const key = chunk.toString();
-      ossClient.get(key).then((result) => {
-        callback(null, result.content);
-      });
+      ossClient.get(key)
+        .catch(() => wait(500))
+        .then(() => ossClient.get(key))
+        .catch(() => wait(2000))
+        .then(() => ossClient.get(key))
+        .then((result) => {
+          callback(null, result.content);
+        })
+        .catch((e) => {
+          console.log(e);
+          console.log('error', key);
+        });
     } else {
       console.log(`get: ${getMd5(chunk)}`);
       callback(null, chunk);
