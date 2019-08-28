@@ -109,6 +109,7 @@ function copyRes(res) {
   });
   res.on('error', (e) => {
     console.log(e);
+    bufStream.emit('error', e);
   });
   return bufStream;
 }
@@ -127,8 +128,9 @@ function pTransform(fn) {
       });
     },
     async transform(data, encoding, callback) {
+      const self = this;
       const sendP = new Promise((resolve, reject) => {
-        fn(data, encoding, (err, sendData) => {
+        fn.call(self, data, encoding, (err, sendData) => {
           if (err) {
             reject(err);
           } else {
@@ -178,6 +180,7 @@ function dataToLine() {
   const transform = function (chunk, enc, callback) {
     const md5 = getMd5(chunk);
     const key = addPrefix(md5);
+    const self = this;
 
     console.log('length: ', chunk.length);
     if (chunk.length > 20 * 1024) {
@@ -187,7 +190,7 @@ function dataToLine() {
         .then(() => {
           console.log(`send: ${key}`);
           callback(null, key + splitChar);
-          pingBeforeIdle(this);
+          pingBeforeIdle(self);
         });
     } else {
       console.log(`send: ${getMd5(chunk)}`);
@@ -195,7 +198,7 @@ function dataToLine() {
         chunk,
         Buffer.from(splitChar, 'utf-8'),
       ]));
-      pingBeforeIdle(this);
+      pingBeforeIdle(self);
     }
   };
 
