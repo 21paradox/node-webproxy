@@ -138,7 +138,10 @@ function dataToLine() {
 
     console.log('length: ', chunk.length);
     if (chunk.length > 20 * 1024) {
-      ossClient.put(key, chunk).then(() => {
+      ossClient.put(key, chunk)
+      .catch(() => ossClient.put(key, chunk))
+      .catch(() => ossClient.put(key, chunk))
+      .then(() => {
         chunk = null;
         console.log(`send: ${key}`);
         callback(null, key + splitChar);
