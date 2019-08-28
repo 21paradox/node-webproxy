@@ -132,7 +132,7 @@ function dataToLine() {
     }, 40 * 1000);
   };
 
-  const transform = function (chunk, callback) {
+  const transform = function (chunk, enc, callback) {
     const md5 = getMd5(chunk);
     const key = addPrefix(md5);
 
