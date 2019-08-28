@@ -68,8 +68,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     console.log({
-      conncfg
-    })
+      conncfg,
+    });
 
     const target = net.connect(conncfg);
     let connected = false;
@@ -84,6 +84,7 @@ const server = http.createServer(async (req, res) => {
     });
 
     const bufStream = lib.copyRes(target);
+    // const bufStream = target;
     const dstream = bufStream.pipe(lib.dataToLine());
     dstream.pipe(res);
 

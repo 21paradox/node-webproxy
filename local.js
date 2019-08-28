@@ -154,6 +154,8 @@ server.on('connect', (req, socket) => {
       },
     });
 
+    console.log(new Date());
+
     let bufQueue = [];
     const sendReq = _.debounce(
       () => {
@@ -176,8 +178,8 @@ server.on('connect', (req, socket) => {
 
     const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToDataStrip());
     dataStream.pipe(socket);
-
-    remoteRes.on('end', () => {
+    dataStream.on('end', () => {
+      console.log(new Date());
       socket.destroy();
     });
     socket.on('error', (e) => {

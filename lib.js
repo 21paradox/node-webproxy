@@ -6,9 +6,8 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 const OSS = require('ali-oss');
 const streamBuffers = require('stream-buffers');
-const Octopus = require('oct');
+const stream = require('stream');
 const CONF = require('./config.json');
-const through2 = require('through2')
 
 const dictArr = [];
 
@@ -114,6 +113,50 @@ function copyRes(res) {
   return bufStream;
 }
 
+function pTransform(fn) {
+  const sendArr = [];
+
+  const pstream = new stream.Transform({
+    final(finalCb) {
+      console.log('final', sendArr);
+      Promise.all(sendArr).then(() => {
+        console.log('call final');
+        process.nextTick(() => {
+          finalCb();
+        });
+      });
+    },
+    async transform(data, encoding, callback) {
+      const sendP = new Promise((resolve, reject) => {
+        fn(data, encoding, (err, sendData) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(sendData);
+          }
+        });
+        // callback();
+      });
+      sendArr.push(sendP);
+      callback();
+
+      const curIndex = sendArr.length - 1;
+      const prevItem = sendArr[curIndex - 1];
+      if (prevItem) {
+        await prevItem;
+      }
+      const sendData = await sendP;
+      if (prevItem) {
+        sendArr.splice(curIndex - 1, 2);
+      } else {
+        sendArr.splice(curIndex, 1);
+      }
+      this.push(sendData);
+    },
+  });
+  return pstream;
+}
+
 const splitChar = 'ψψψ';
 
 function dataToLine() {
@@ -139,26 +182,24 @@ function dataToLine() {
     console.log('length: ', chunk.length);
     if (chunk.length > 20 * 1024) {
       ossClient.put(key, chunk)
-      .catch(() => ossClient.put(key, chunk))
-      .catch(() => ossClient.put(key, chunk))
-      .then(() => {
-        chunk = null;
-        console.log(`send: ${key}`);
-        callback(null, key + splitChar);
-        pingBeforeIdle(this);
-      });
+        .catch(() => ossClient.put(key, chunk))
+        .catch(() => ossClient.put(key, chunk))
+        .then(() => {
+          console.log(`send: ${key}`);
+          callback(null, key + splitChar);
+          pingBeforeIdle(this);
+        });
     } else {
       console.log(`send: ${getMd5(chunk)}`);
       callback(null, Buffer.concat([
         chunk,
         Buffer.from(splitChar, 'utf-8'),
       ]));
-      chunk = null;
       pingBeforeIdle(this);
     }
   };
 
-  const dstream =  through2(transform);
+  const dstream = pTransform(transform);
 
   dstream.on('end', () => {
     isEnd = true;
@@ -180,8 +221,9 @@ function wait(time) {
 }
 
 function lineToDataStrip() {
-  const transform = function (chunk, callback) {
+  const transform = function (chunk, enc, callback) {
     const lineStr = chunk.slice(0, 6).toString();
+    console.log('size: ', chunk.length);
 
     if (lineStr.match(/^proxy\//)) {
       console.log(`get: ${chunk.slice(0, 40).toString()}`);
@@ -192,18 +234,21 @@ function lineToDataStrip() {
         .catch(() => wait(2000))
         .then(() => ossClient.get(key))
         .then((result) => {
+          console.log(`get finish: ${chunk.slice(0, 40).toString()}`);
           callback(null, result.content);
         })
         .catch((e) => {
           console.log(e);
           console.log('error', key);
+          callback(e);
         });
     } else {
       console.log(`get: ${getMd5(chunk)}`);
       callback(null, chunk);
     }
   };
-  const rs = new Octopus.Queue(transform);
+  const rs = pTransform(transform);
+  // const rs = through2(transform);
   return rs;
 }
 
