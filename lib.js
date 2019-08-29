@@ -188,7 +188,7 @@ function dataToLine() {
         .catch(() => ossClient.put(key, chunk))
         .catch(() => ossClient.put(key, chunk))
         .then(() => {
-          console.log(`send: ${key}`);
+          console.log(`send finish: ${key}`);
           callback(null, key + splitChar);
           pingBeforeIdle(self);
         });
@@ -205,6 +205,7 @@ function dataToLine() {
   const dstream = pTransform(transform);
 
   dstream.on('end', () => {
+    console.log('dstream end')
     isEnd = true;
     if (timer) {
       clearTimeout(timer);

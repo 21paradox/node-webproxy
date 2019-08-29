@@ -92,6 +92,11 @@ const server = http.createServer(async (req, res) => {
       target.write(data);
     });
 
+    req.on('aborted', () => {
+      console.log('aborted')
+      target.end();
+    });
+
     target.on('close', () => {
       if (err) {
         const errstr = JSON.stringify(serializeError(err), null, 4);
