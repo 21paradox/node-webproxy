@@ -100,7 +100,7 @@ function removePrefix(str) {
 function copyRes(res) {
   const bufStream = new streamBuffers.ReadableStreamBuffer({
     frequency: 200, // in milliseconds.
-    chunkSize: 512 * 1024, // in bytes.
+    chunkSize: parseInt(process.env.ossChunkSize, 10) || 256 * 1024, // in bytes.
   });
   // remoteRes.pipe(bufStream); // 300ms cache
   res.on('data', (data) => {
@@ -210,7 +210,7 @@ function dataToLine() {
     }
   };
 
-  const dstream = through2(transform);
+  const dstream = pTransform(transform);
 
   function cleanPing() {
     isEnd = true;
