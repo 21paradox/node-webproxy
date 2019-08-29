@@ -172,6 +172,7 @@ function dataToLine() {
       if (isEnd) {
         return;
       }
+      console.log('send ping');
       curStream.push(splitChar);
       pingBeforeIdle(curStream);
     }, 40 * 1000);
