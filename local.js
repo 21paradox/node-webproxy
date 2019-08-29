@@ -179,13 +179,21 @@ server.on('connect', (req, socket) => {
     const dataStream = remoteRes.pipe(split(lib.splitChar)).pipe(lib.lineToDataStrip());
     dataStream.pipe(socket);
     dataStream.on('end', () => {
-      console.log(new Date());
+      console.log(new Date(), 'socket destroy');
       socket.destroy();
+    });
+    remoteRes.on('end', () => {
+      console.log('remoteRes end', new Date());
     });
     socket.on('error', (e) => {
       console.log(e, 'socket-err');
     });
     socket.resume();
+    socket.on('end', () => {
+      console.log('end socket');
+      dataStream.end();
+      remoteRes.destroy();
+    });
   });
 
   connectReq.on('error', () => {

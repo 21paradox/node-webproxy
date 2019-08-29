@@ -74,6 +74,7 @@ const server = http.createServer(async (req, res) => {
     const target = net.connect(conncfg);
     let connected = false;
     let err = null;
+    let targetClosed = false;
 
     target.on('connect', () => {
       connected = true;
@@ -89,12 +90,15 @@ const server = http.createServer(async (req, res) => {
     dstream.pipe(res);
 
     ee.on(uid, (data) => {
-      target.write(data);
+      if (!targetClosed) {
+        target.write(data);
+      }
     });
 
     req.on('aborted', () => {
-      console.log('aborted')
+      console.log('aborted');
       target.end();
+      dstream.emit('error', new Error('Abort'));
     });
 
     target.on('close', () => {
@@ -104,6 +108,7 @@ const server = http.createServer(async (req, res) => {
       } else {
         // res.end();
       }
+      targetClosed = true;
       console.log('onclose', err);
       setTimeout(() => {
         ee.removeAllListeners(uid);

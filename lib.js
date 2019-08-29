@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const OSS = require('ali-oss');
 const streamBuffers = require('stream-buffers');
 const stream = require('stream');
+const _ = require('lodash');
+const through2 = require('through2');
 const CONF = require('./config.json');
 
 const dictArr = [];
@@ -114,8 +116,10 @@ function copyRes(res) {
   return bufStream;
 }
 
-function pTransform(fn) {
+
+function pTransform(fn, cfg={}) {
   const sendArr = [];
+  const concurrency = cfg.concurrency || process.env.concurrency || CONF.concurrency || 5;
 
   const pstream = new stream.Transform({
     final(finalCb) {
@@ -137,22 +141,25 @@ function pTransform(fn) {
             resolve(sendData);
           }
         });
-        // callback();
       });
+
+      //  throttle
+      if (sendArr.length >= concurrency) {
+        await Promise.all(sendArr.slice());
+        const sendData = await sendP;
+        setTimeout(() => {
+          callback(null, sendData);
+        }, 10);
+        return;
+      }
+
       sendArr.push(sendP);
       callback();
 
-      const curIndex = sendArr.length - 1;
-      const prevItem = sendArr[curIndex - 1];
-      if (prevItem) {
-        await prevItem;
-      }
+      await Promise.all(sendArr.slice());
       const sendData = await sendP;
-      if (prevItem) {
-        sendArr.splice(curIndex - 1, 2);
-      } else {
-        sendArr.splice(curIndex, 1);
-      }
+
+      _.pull(sendArr, sendP);
       this.push(sendData);
     },
   });
@@ -203,15 +210,25 @@ function dataToLine() {
     }
   };
 
-  const dstream = pTransform(transform);
+  const dstream = through2(transform);
 
-  dstream.on('end', () => {
-    console.log('dstream end')
+  function cleanPing() {
     isEnd = true;
     if (timer) {
       clearTimeout(timer);
       timer = null;
     }
+  }
+
+  dstream.on('end', () => {
+    console.log('dstream end');
+    cleanPing();
+  });
+
+  dstream.on('error', (e) => {
+    console.log(e);
+    cleanPing();
+    dstream.destroy();
   });
 
   return dstream;
@@ -233,6 +250,8 @@ function lineToDataStrip() {
     if (lineStr.match(/^proxy\//)) {
       console.log(`get: ${chunk.slice(0, 40).toString()}`);
       const key = chunk.toString();
+      // wait(2 * 1000)
+      //   .then(() => ossClient.get(key))
       ossClient.get(key)
         .catch(() => wait(500))
         .then(() => ossClient.get(key))
