@@ -149,7 +149,7 @@ function pTransform(fn, cfg={}) {
         const sendData = await sendP;
         setTimeout(() => {
           callback(null, sendData);
-        }, 10);
+        }, 100);
         return;
       }
 
