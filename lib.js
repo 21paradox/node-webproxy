@@ -7,8 +7,6 @@ const crypto = require('crypto');
 const OSS = require('ali-oss');
 const streamBuffers = require('stream-buffers');
 const stream = require('stream');
-const _ = require('lodash');
-const through2 = require('through2');
 const CONF = require('./config.json');
 
 const dictArr = [];
@@ -117,7 +115,17 @@ function copyRes(res) {
 }
 
 
-function pTransform(fn, cfg={}) {
+function removeFirst(arr, item) {
+  arr.some((v, index) => {
+    if (v === item) {
+      arr.splice(index, 1);
+      return true;
+    }
+    return false;
+  });
+}
+
+function pTransform(fn, cfg = {}) {
   const sendArr = [];
   const concurrency = cfg.concurrency || process.env.concurrency || CONF.concurrency || 5;
 
@@ -145,21 +153,23 @@ function pTransform(fn, cfg={}) {
 
       //  throttle
       if (sendArr.length >= concurrency) {
+        sendArr.push(sendP);
         await Promise.all(sendArr.slice());
         const sendData = await sendP;
-        setTimeout(() => {
-          callback(null, sendData);
-        }, 100);
+        removeFirst(sendArr, sendP);
+        callback(null, sendData);
         return;
       }
 
       sendArr.push(sendP);
-      callback();
+      process.nextTick(() => {
+        callback();
+      });
 
       await Promise.all(sendArr.slice());
       const sendData = await sendP;
 
-      _.pull(sendArr, sendP);
+      removeFirst(sendArr, sendP);
       this.push(sendData);
     },
   });
@@ -190,8 +200,8 @@ function dataToLine() {
     const key = addPrefix(md5);
     const self = this;
 
-    console.log('length: ', chunk.length);
     if (chunk.length > 20 * 1024) {
+      console.log('send: ', key);
       ossClient.put(key, chunk)
         .catch(() => ossClient.put(key, chunk))
         .catch(() => ossClient.put(key, chunk))
@@ -253,16 +263,16 @@ function lineToDataStrip() {
       // wait(2 * 1000)
       //   .then(() => ossClient.get(key))
       ossClient.get(key)
-        .catch(() => wait(500))
+        .catch(() => wait(100))
         .then(() => ossClient.get(key))
-        .catch(() => wait(2000))
+        .catch(() => wait(3000))
         .then(() => ossClient.get(key))
+        .catch(() => wait(10 * 1000))
         .then((result) => {
           console.log(`get finish: ${chunk.slice(0, 40).toString()}`);
           callback(null, result.content);
         })
         .catch((e) => {
-          console.log(e);
           console.log('error', key);
           callback(e);
         });
