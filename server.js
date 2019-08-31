@@ -96,7 +96,6 @@ const server = http.createServer(async (req, res) => {
     });
 
     req.on('aborted', () => {
-      console.log('aborted');
       target.end();
       dstream.emit('error', new Error('Abort'));
     });

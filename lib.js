@@ -109,7 +109,8 @@ function copyRes(res) {
   });
   res.on('error', (e) => {
     console.log(e);
-    bufStream.emit('error', e);
+    // bufStream.emit('error', e);
+    bufStream.stop();
   });
   return bufStream;
 }
@@ -231,7 +232,6 @@ function dataToLine() {
   }
 
   dstream.on('end', () => {
-    console.log('dstream end');
     cleanPing();
   });
 
@@ -263,11 +263,9 @@ function lineToDataStrip() {
       // wait(2 * 1000)
       //   .then(() => ossClient.get(key))
       ossClient.get(key)
-        .catch(() => wait(100))
-        .then(() => ossClient.get(key))
-        .catch(() => wait(3000))
-        .then(() => ossClient.get(key))
-        .catch(() => wait(10 * 1000))
+        .catch(() => wait(100).then(() => ossClient.get(key)))
+        .catch(() => wait(3000).then(() => ossClient.get(key)))
+        .catch(() => wait(5000).then(() => ossClient.get(key)))
         .then((result) => {
           console.log(`get finish: ${chunk.slice(0, 40).toString()}`);
           callback(null, result.content);
