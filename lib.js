@@ -151,10 +151,10 @@ function pTransform(fn, cfg = {}) {
           }
         });
       });
+      sendArr.push(sendP);
 
       //  throttle
       if (sendArr.length >= concurrency) {
-        sendArr.push(sendP);
         await Promise.all(sendArr.slice());
         const sendData = await sendP;
         removeFirst(sendArr, sendP);
@@ -162,11 +162,9 @@ function pTransform(fn, cfg = {}) {
         return;
       }
 
-      sendArr.push(sendP);
       process.nextTick(() => {
         callback();
       });
-
       await Promise.all(sendArr.slice());
       const sendData = await sendP;
 
@@ -232,7 +230,14 @@ function dataToLine() {
   }
 
   dstream.on('end', () => {
+    console.log('clean ping end')
     cleanPing();
+  });
+  
+  dstream.on('close', () => {
+    console.log('clean ping close')
+    cleanPing();
+    dstream.destroy();
   });
 
   dstream.on('error', (e) => {
