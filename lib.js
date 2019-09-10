@@ -131,6 +131,8 @@ function pTransform(fn, cfg = {}) {
   const concurrency = cfg.concurrency || process.env.concurrency || CONF.concurrency || 5;
 
   const pstream = new stream.Transform({
+    readableHighWaterMark: cfg.readableHighWaterMark,
+    writableHighWaterMark: cfg.writableHighWaterMark,
     final(finalCb) {
       console.log('final', sendArr);
       Promise.all(sendArr).then(() => {
@@ -219,7 +221,10 @@ function dataToLine() {
     }
   };
 
-  const dstream = pTransform(transform);
+  const dstream = pTransform(transform, {
+    readableHighWaterMark: 64 * 1024,
+    writableHighWaterMark: 256 * 1024,
+  });
 
   function cleanPing() {
     isEnd = true;
