@@ -38,7 +38,8 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(remoteRes.statusCode, {
         resHeadStr,
       });
-      const bufStream = lib.copyRes(remoteRes);
+      // const bufStream = lib.copyRes(remoteRes);
+      const bufStream = remoteRes;
       const dstream = bufStream.pipe(lib.dataToLine());
       dstream.pipe(res);
     });
@@ -84,8 +85,8 @@ const server = http.createServer(async (req, res) => {
       res._send('');
     });
 
-    const bufStream = lib.copyRes(target);
-    // const bufStream = target;
+    // const bufStream = lib.copyRes(target);
+    const bufStream = target;
     const dstream = bufStream.pipe(lib.dataToLine());
     dstream.pipe(res);
 
