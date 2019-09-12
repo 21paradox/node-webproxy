@@ -5,9 +5,9 @@ const httpStatusCodes = require('know-your-http-well/json/status-codes.json');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const OSS = require('ali-oss');
-const streamBuffers = require('stream-buffers');
 const stream = require('stream');
 const CONF = require('./config.json');
+const _ = require('lodash')
 
 const dictArr = [];
 
@@ -96,25 +96,50 @@ function removePrefix(str) {
 }
 
 function copyRes(res) {
-  const bufStream = new streamBuffers.ReadableStreamBuffer({
-    frequency: 200, // in milliseconds.
-    chunkSize: parseInt(process.env.ossChunkSize, 10) || 256 * 1024, // in bytes.
+  const bufStream = new stream.Readable({
+    highWaterMark: 300 * 1024,
+    read() {}
   });
-  // remoteRes.pipe(bufStream); // 300ms cache
+  let bufArr = [];
+  function batchSend() {
+    if (bufArr[bufArr.length - 1] === null) {
+      bufArr.pop();
+      bufStream.push(Buffer.concat(bufArr));
+      bufStream.push(null);
+    } else {
+      bufStream.push(Buffer.concat(bufArr));
+    }
+    bufArr = [];
+  }
+  const debounceFlush = _.debounce(() => {
+    batchSend();
+  }, 300, { maxWait: 400 });
+
   res.on('data', (data) => {
-    bufStream.put(data);
+    bufArr.push(data);
+    let totalByte = 0;
+    bufArr.forEach((buf) => {
+      if (buf) {
+        totalByte += buf.length;
+      }
+    });
+    if (totalByte >= 1024 * 256) {
+      batchSend();
+    } else {
+      debounceFlush();
+    }
   });
   res.on('end', () => {
-    bufStream.stop();
+    bufArr.push(null);
+    debounceFlush();
   });
   res.on('error', (e) => {
     console.log(e);
-    // bufStream.emit('error', e);
-    bufStream.stop();
+    bufArr.push(null);
+    debounceFlush();
   });
   return bufStream;
 }
-
 
 function removeFirst(arr, item) {
   arr.some((v, index) => {
