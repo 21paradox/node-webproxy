@@ -96,48 +96,38 @@ function removePrefix(str) {
 }
 
 function copyRes(res) {
-  const bufStream = new stream.Readable({
-    highWaterMark: 300 * 1024,
-    read() {}
-  });
   let bufArr = [];
   function batchSend() {
-    if (bufArr[bufArr.length - 1] === null) {
-      bufArr.pop();
-      bufStream.push(Buffer.concat(bufArr));
-      bufStream.push(null);
-    } else {
-      bufStream.push(Buffer.concat(bufArr));
-    }
+    bufStream.push(Buffer.concat(bufArr));
     bufArr = [];
   }
   const debounceFlush = _.debounce(() => {
     batchSend();
-  }, 300, { maxWait: 400 });
+  }, 50, { maxWait: 200 });
 
-  res.on('data', (data) => {
-    bufArr.push(data);
-    let totalByte = 0;
-    bufArr.forEach((buf) => {
-      if (buf) {
-        totalByte += buf.length;
+  const bufStream = new stream.Transform({
+    transform(data, encoding, callback) {
+      bufArr.push(data);
+      let totalByte = 0;
+      bufArr.forEach((buf) => {
+        if (buf) {
+          totalByte += buf.length;
+        }
+      });
+      if (totalByte > 512 * 1024) {
+        batchSend();
+      } else {
+        debounceFlush();
       }
-    });
-    if (totalByte >= 1024 * 256) {
-      batchSend();
-    } else {
-      debounceFlush();
-    }
-  });
-  res.on('end', () => {
-    bufArr.push(null);
-    debounceFlush();
+      callback();
+    },
+    readableHighWaterMark: 1024 * 1024,
+    writableHighWaterMark: 1024 * 1024,
   });
   res.on('error', (e) => {
     console.log(e);
-    bufArr.push(null);
-    debounceFlush();
   });
+  res.pipe(bufStream);
   return bufStream;
 }
 
@@ -247,8 +237,8 @@ function dataToLine() {
   };
 
   const dstream = pTransform(transform, {
-    readableHighWaterMark: 64 * 1024,
-    writableHighWaterMark: 256 * 1024,
+    readableHighWaterMark: 1024 * 1024,
+    writableHighWaterMark: 1024 * 1024,
   });
 
   function cleanPing() {
@@ -263,7 +253,7 @@ function dataToLine() {
     console.log('clean ping end')
     cleanPing();
   });
-  
+
   dstream.on('close', () => {
     console.log('clean ping close')
     cleanPing();
@@ -295,8 +285,6 @@ function lineToDataStrip() {
     if (lineStr.match(/^proxy\//)) {
       console.log(`get: ${chunk.slice(0, 40).toString()}`);
       const key = chunk.toString();
-      // wait(2 * 1000)
-      //   .then(() => ossClient.get(key))
       ossClient.get(key)
         .catch(() => wait(100).then(() => ossClient.get(key)))
         .catch(() => wait(3000).then(() => ossClient.get(key)))
@@ -315,7 +303,6 @@ function lineToDataStrip() {
     }
   };
   const rs = pTransform(transform);
-  // const rs = through2(transform);
   return rs;
 }
 
