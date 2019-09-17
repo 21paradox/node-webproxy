@@ -98,7 +98,11 @@ function removePrefix(str) {
 function copyRes(res) {
   let bufArr = [];
   function batchSend() {
-    bufStream.push(Buffer.concat(bufArr));
+    try {
+      bufStream.push(Buffer.concat(bufArr));
+    } catch(e) {
+      console.log(e);
+    }
     bufArr = [];
   }
   const debounceFlush = _.debounce(() => {
