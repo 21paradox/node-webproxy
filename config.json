@@ -1,5 +1,5 @@
 {
-  "hostname": "localhost",
-  "local_port": 8001,
-  "remote_port": 8002
+  "pfx": "https://test-routes-lyart.now.sh/proxy-http/node-webproxy.herokuapp.com",
+  "local_port": 6668,
+  "remote_port": 80
 }

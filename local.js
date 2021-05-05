@@ -1,9 +1,13 @@
 const http = require('http');
 const https = require('https');
 const url = require('url');
-const crypto = require('crypto');
-const zlib = require('zlib');
 const serializeError = require('serialize-error');
+const fetch = require('node-fetch');
+
+const dns = require('dns')
+dns.setServers([
+    '1.1.1.1'
+]);
 
 const server = http.createServer();
 
@@ -23,7 +27,7 @@ if (CONF.remote_port === 443) {
     sender = http;
 }
 
-const keepAliveAgent = new sender.Agent({
+const keepAliveAgent = new https.Agent({
     keepAlive: true,
     keepAliveMsecs: 50 * 1000,
 });
@@ -48,19 +52,14 @@ server.on('request', function (req, res) {
         headers: headers
     };
 
-    lib.compressReqCfg(reqConfig, function (err, reqCfgBase64) {
-
-        const proxyReq = sender.request({
-            hostname: CONF.hostname,
-            port: CONF.remote_port,
-            path: '/proxyhttp',
+    lib.compressReqCfg(reqConfig, async (err, reqCfgBase64) => {
+        const proxyReq = https.request(CONF.pfx + '/proxyhttp', {
             headers: {
                 reqcfg: reqCfgBase64
             },
             method: reqConfig.method,
             agent: keepAliveAgent
         });
-
         proxyReq.on('response', function (remmoteRes) {
             res.writeHead(remmoteRes.statusCode, remmoteRes.headers);
             remmoteRes.pipe(res);
@@ -77,7 +76,6 @@ server.on('request', function (req, res) {
             }
             res.end(errstr);
         });
-
     });
 });
 
@@ -85,8 +83,7 @@ const uuid = require('uuid');
 const _ = require('lodash');
 
 
-server.on('connect', function (req, socket, head) {
-
+server.on('connect', async function (req, socket, head) {
     socket.pause();
 
     const parts = req.url.split(':');
@@ -95,69 +92,52 @@ server.on('connect', function (req, socket, head) {
     const opts = { host: host, port: port };
     const uid = uuid.v1();
 
-    const connectReq = sender.request({
-        hostname: CONF.hostname,
-        port: CONF.remote_port,
-        path: '/httpsconnect',
+    const remmoteRes = await fetch(CONF.pfx + '/httpsconnect', {
         headers: {
             uid: uid,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.25 Safari/537.36 Core/1.70.3756.400 QQBrowser/10.5.4039.400',
             conncfg: Buffer.from(JSON.stringify(opts)).toString('base64')
+        }
+    })
+
+    _synReply({
+        socket,
+        code: 200,
+        reason: 'Connection established',
+        headers: {
+            'Connection': 'keep-alive'
         },
-        method: 'GET',
-        agent: keepAliveAgent
     });
 
-    connectReq.on('response', function (remmoteRes) {
-        _synReply({
-            socket,
-            code: 200,
-            reason: 'Connection established',
-            headers: {
-                'Connection': 'keep-alive'
-            },
+    let bufQueue = [];
+    let sendReq = _.debounce(function () {
+        const queueToSend = Buffer.concat(bufQueue);
+        bufQueue = [];
+
+        doHttpUp({
+            uid,
+            buf: queueToSend
         });
+    }, 100, { 'maxWait': 400 });
 
-        let bufQueue = [];
-        let sendReq = _.debounce(function () {
-            const queueToSend = Buffer.concat(bufQueue);
-            bufQueue = [];
-
-            doHttpUp({
-                uid,
-                buf: queueToSend
-            });
-        }, 300, { 'maxWait': 400 });
-
-        socket.on('data', function (buf) {
-            bufQueue.push(buf);
-            sendReq();
-        });
-
-        remmoteRes.on('data', function (data) {
-            socket.write(data);
-        });
-
-        remmoteRes.on('end', function () {
-            socket.destroy();
-        });
-
-        socket.on('error', (e) => {
-            console.log(e)
-        })
-
-        socket.resume();
+    socket.on('data', function (buf) {
+        bufQueue.push(buf);
+        sendReq();
     });
 
-    connectReq.on('error', function () {
-        _synReply({
-            socket,
-            code: 502,
-            reason: 'connect remote error',
-            headers: {}
-        });
+    remmoteRes.body.on('data', function (data) {
+        // console.log('222')
+        socket.write(data);
     });
 
-    connectReq.end();
+    remmoteRes.body.on('end', function () {
+        socket.destroy();
+    });
+
+    socket.on('error', (e) => {
+        // console.log(e)
+    })
+    socket.resume();
 });
 
 
@@ -175,25 +155,15 @@ function _synReply({ socket, code, reason, headers }) {
 }
 
 function doHttpUp(cfg) {
-    const { uid, buf } = cfg;
-    const dataReq = sender.request({
-        hostname: CONF.hostname,
-        port: CONF.remote_port,
-        path: '/httpsup',
+    const { uid, buf } = cfg
+    const sendReq = fetch(CONF.pfx + '/httpsup', {
+        method: 'post',
         headers: {
-            uid: uid,
-            'Content-Length': Buffer.byteLength(buf)
+            uid,
         },
-        method: 'GET',
-        agent: keepAliveAgent
-    });
-
-    dataReq.on('error', function (e) {
-        console.log(e)
-    });
-
-    dataReq.write(buf);
-    dataReq.end();
+        body: buf,
+    })
+    return sendReq
 }
 
 

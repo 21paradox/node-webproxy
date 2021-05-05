@@ -134,5 +134,5 @@ if (process.env.PORT) {
 }
 
 server.listen(port, '0.0.0.0', function () {
-    console.log(`listening on ${CONF.remote_port}`);
+    console.log(`listening on ${port}`);
 });
