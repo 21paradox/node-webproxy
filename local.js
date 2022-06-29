@@ -9,6 +9,22 @@ dns.setServers([
     '1.1.1.1'
 ]);
 
+const httpAgent = new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 50 * 1000,
+});
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 50 * 1000,
+});
+const defaultAgent = function (_parsedURL) {
+    if (_parsedURL.protocol == 'http:') {
+        return httpAgent;
+    } else {
+        return httpsAgent;
+    }
+}
+
 const server = http.createServer();
 
 
@@ -92,12 +108,22 @@ server.on('connect', async function (req, socket, head) {
     const opts = { host: host, port: port };
     const uid = uuid.v1();
 
-    const remmoteRes = await fetch(CONF.pfx + '/httpsconnect', {
-        headers: {
-            uid: uid,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.25 Safari/537.36 Core/1.70.3756.400 QQBrowser/10.5.4039.400',
-            conncfg: Buffer.from(JSON.stringify(opts)).toString('base64')
-        }
+
+    const beginConn = () => {
+        return fetch(CONF.pfx + '/httpsconnect', {
+            headers: {
+                uid: uid,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.25 Safari/537.36 Core/1.70.3756.400 QQBrowser/10.5.4039.400',
+                conncfg: Buffer.from(JSON.stringify(opts)).toString('base64')
+            },
+            agent: defaultAgent
+        })
+    }
+
+    const remmoteRes = await beginConn().catch(() => {
+        return beginConn()
+    }).catch(() => {
+        return beginConn()
     })
 
     _synReply({
@@ -162,6 +188,7 @@ function doHttpUp(cfg) {
             uid,
         },
         body: buf,
+        agent: defaultAgent
     })
     return sendReq
 }
