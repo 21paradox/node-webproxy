@@ -37,6 +37,7 @@ const server = http.createServer(function (req, res) {
   const url2 = encryptUrl(url1)
   req.url = '/' +url2
 
+  res.setHeader('access-control-allow-origin', '*')
   proxy.web(req, res, {
     target: conf.cfOrigin,
     agent: httpAgent,
