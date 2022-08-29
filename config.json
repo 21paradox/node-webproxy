@@ -1,5 +1,8 @@
 {
-  "pfx": "https://test-routes-lyart.now.sh/proxy-http/node-webproxy.herokuapp.com",
+  "pfx1": "https://test-routes-lyart.vercel.app/proxy-https/node-webproxy.herokuapp.com",
   "local_port": 6668,
-  "remote_port": 80
+  "remote_port": 80,
+  "cfOrigin": "",
+  "cfip": "",
+  "cfPort": 8866
 }
